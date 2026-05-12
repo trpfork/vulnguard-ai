@@ -148,23 +148,23 @@ def _log(node: str, level: str, message: str, detail: Optional[str] = None) -> A
     return AgentLog(node=node, level=level, message=message, detail=detail)
 
 
-def _read_file_content(file_path: str) -> str:
+def _read_file_content(file_path: str, access_token: Optional[str] = None) -> str:
     """
     Fetch file content. Supports:
     - Local file paths (for testing)
-    - GitHub API URLs (owner/repo/path format) — Phase 3
+    - GitHub API URLs (owner/repo/path format)
     """
     # Local file
     local = Path(file_path)
     if local.exists():
         return local.read_text(encoding="utf-8")
 
-    # GitHub raw URL fallback (Phase 3 — uses GITHUB_TOKEN)
-    github_token = os.getenv("GITHUB_TOKEN", "")
-    if github_token and "/" in file_path:
+    # GitHub raw URL fallback (uses OAuth token if provided, else fallback to ENV)
+    token = access_token or os.getenv("GITHUB_TOKEN", "")
+    if token and "/" in file_path:
         import urllib.request
         url = f"https://raw.githubusercontent.com/{file_path}"
-        req = urllib.request.Request(url, headers={"Authorization": f"token {github_token}"})
+        req = urllib.request.Request(url, headers={"Authorization": f"token {token}"})
         with urllib.request.urlopen(req) as r:
             return r.read().decode("utf-8")
 
@@ -185,7 +185,7 @@ def scan_node(state: ScanState) -> dict:
     logs = [_log("scan", "info", f"Reading file: {state['file_path']}")]
 
     try:
-        content = _read_file_content(state["file_path"])
+        content = _read_file_content(state["file_path"], state.get("access_token"))
     except Exception as e:
         return {
             "file_content": "",

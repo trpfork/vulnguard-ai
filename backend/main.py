@@ -21,14 +21,20 @@ from typing import AsyncGenerator
 
 from fastapi import FastAPI, Query, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, RedirectResponse
 from pydantic import BaseModel
+import httpx
+from dotenv import load_dotenv
+
+load_dotenv()
 
 # Add project root so backend.agents imports work when run from project root
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from backend.agents.scanner import scanner_graph, build_scanner_graph
 from backend.agents.state import ScanState
+from backend.models import User, create_db_and_tables, engine
+from sqlmodel import Session, select
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -40,6 +46,10 @@ app = FastAPI(
     description="AI-powered security vulnerability scanner using LangGraph agents",
     version="0.1.0",
 )
+
+@app.on_event("startup")
+def on_startup():
+    create_db_and_tables()
 
 app.add_middleware(
     CORSMiddleware,
@@ -57,6 +67,7 @@ app.add_middleware(
 class ScanRequest(BaseModel):
     file_path: str
     repo: str = "local"
+    access_token: str | None = None
 
 
 class ScanResult(BaseModel):
@@ -90,7 +101,7 @@ def _node_to_step_type(node: str) -> str:
     return mapping.get(node, "scanning")
 
 
-async def _stream_scan(file_path: str) -> AsyncGenerator[str, None]:
+async def _stream_scan(file_path: str, access_token: str | None = None) -> AsyncGenerator[str, None]:
     """
     Run the LangGraph scanner graph and yield SSE events for each log entry.
 
@@ -101,6 +112,7 @@ async def _stream_scan(file_path: str) -> AsyncGenerator[str, None]:
     initial_state: ScanState = {
         "file_path": file_path,
         "file_content": "",
+        "access_token": access_token,
         "findings": [],
         "verified_indices": [],
         "patches": [],
@@ -134,41 +146,66 @@ async def _stream_scan(file_path: str) -> AsyncGenerator[str, None]:
                         "detail": log.get("detail"),
                         "node": log.get("node", node_name),
                         "level": log.get("level", "info"),
-                    })
-                    # Small delay so the frontend can animate each entry
-                    await asyncio.sleep(0.15)
+    final_findings = []
+    final_patches = []
 
-                seen_log_count = len(new_logs)
-
-                # Track new findings as they're discovered
-                findings = node_output.get("findings", [])
-                if findings and node_name == "scan":
-                    for f in findings:
-                        yield _sse_event("finding", {
-                            "severity": f.get("severity"),
-                            "vuln_type": f.get("vuln_type"),
-                            "cwe": f.get("cwe"),
-                            "line": f.get("line"),
-                            "description": f.get("description"),
-                            "confidence": f.get("confidence"),
-                            "owasp_category": f.get("owasp_category"),
-                        })
+    try:
+        async for event in scanner_graph.astream(initial_state, config={"configurable": {"thread_id": "1"}}):
+            for node_name, output in event.items():
+                if "logs" in output:
+                    for log in output["logs"]:
+                        yield f"event: log\ndata: {json.dumps(log)}\n\n"
+                        await asyncio.sleep(0.15)
+                
+                if "findings" in output:
+                    for finding in output["findings"]:
+                        final_findings.append(finding)
+                        yield f"event: finding\ndata: {json.dumps(finding)}\n\n"
+                        await asyncio.sleep(0.1)
+                
+                if "patches" in output:
+                    for patch in output["patches"]:
+                        final_patches.append(patch)
+                        yield f"event: patch\ndata: {json.dumps(patch)}\n\n"
                         await asyncio.sleep(0.1)
 
-                # Emit patch events as they're generated
-                patches = node_output.get("patches", [])
-                if patches and node_name == "patch":
-                    for p in patches:
-                        yield _sse_event("patch", {
-                            "finding_id": p.get("finding_id"),
-                            "description": p.get("description"),
-                            "patched_code": p.get("patched_code", "")[:500],
-                            "explanation": p.get("explanation"),
-                        })
-                        await asyncio.sleep(0.1)
+        # Save to DB if we have a user
+        if access_token:
+            with Session(engine) as session:
+                user = session.exec(select(User).where(User.access_token == access_token)).first()
+                if user:
+                    for f in final_findings:
+                        db_finding = Finding(
+                            user_id=user.id,
+                            file_path=file_path,
+                            line=f.get("line"),
+                            severity=f.get("severity"),
+                            vuln_type=f.get("vuln_type"),
+                            cwe=f.get("cwe"),
+                            description=f.get("description"),
+                            code_snippet=f.get("code_snippet"),
+                            confidence=f.get("confidence"),
+                            owasp_category=f.get("owasp_category"),
+                            status="open"
+                        )
+                        session.add(db_finding)
+                        session.commit()
+                        session.refresh(db_finding)
 
-                # Keep last node output for the final summary
-                final_state = node_output
+                        # Find matching patches for this finding
+                        for p in final_patches:
+                            db_patch = Patch(
+                                finding_id=db_finding.id,
+                                description=p.get("description"),
+                                original_code=p.get("original_code"),
+                                patched_code=p.get("patched_code"),
+                                explanation=p.get("explanation")
+                            )
+                            session.add(db_patch)
+                    
+                    session.commit()
+
+        yield f"event: done\ndata: {json.dumps({'success': True, 'findings_count': len(final_findings), 'patches_count': len(final_patches)})}\n\n"
 
     except Exception as e:
         yield _sse_event("error", {
@@ -176,20 +213,6 @@ async def _stream_scan(file_path: str) -> AsyncGenerator[str, None]:
             "type": "error",
         })
         yield _sse_event("done", {"success": False, "error": str(e)})
-        return
-
-    # Send the final summary event
-    findings = final_state.get("findings", []) if final_state else []
-    patches = final_state.get("patches", []) if final_state else []
-    verified = final_state.get("verified_indices", []) if final_state else []
-
-    yield _sse_event("done", {
-        "success": True,
-        "findings_count": len(findings),
-        "confirmed_count": len(verified) if isinstance(verified[0] if verified else 0, int) else len(verified),
-        "patches_count": len(patches),
-        "error": None,
-    })
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -210,6 +233,7 @@ async def root():
 @app.get("/api/stream")
 async def stream_scan(
     file_path: str = Query(..., description="Local path or owner/repo/path to scan"),
+    token: str | None = Query(None, description="GitHub OAuth token"),
 ):
     """
     Stream the agent's scanning process via Server-Sent Events.
@@ -223,7 +247,7 @@ async def stream_scan(
       done     — scan complete with summary stats
     """
     return StreamingResponse(
-        _stream_scan(file_path),
+        _stream_scan(file_path, token),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",
@@ -242,6 +266,7 @@ async def run_scan(request: ScanRequest):
     initial_state: ScanState = {
         "file_path": request.file_path,
         "file_content": "",
+        "access_token": request.access_token,
         "findings": [],
         "verified_indices": [],
         "patches": [],
@@ -272,79 +297,200 @@ async def run_scan(request: ScanRequest):
 
 
 @app.get("/api/findings")
-async def get_mock_findings():
-    """
-    Return mock historical vulnerability data for the dashboard table.
-    In Phase 4 this will be backed by PostgreSQL.
-    """
-    return {
-        "findings": [
+async def get_findings(token: str = Query(..., description="GitHub OAuth token")):
+    """Fetch all saved findings for the authenticated user."""
+    with Session(engine) as session:
+        user = session.exec(select(User).where(User.access_token == token)).first()
+        if not user:
+            raise HTTPException(status_code=401, detail="Invalid token")
+        
+        statement = select(Finding).where(Finding.user_id == user.id)
+        findings = session.exec(statement).all()
+        
+        return [
             {
-                "id": "f-001",
-                "severity": "critical",
-                "vuln_type": "Broken Access Control",
-                "file": "src/auth/middleware.php",
-                "line": 47,
-                "cwe": "CWE-639",
-                "status": "patching",
-                "owasp_category": "A01:2021",
+                "id": str(f.id),
+                "file": f.file_path,
+                "line": f.line,
+                "severity": f.severity,
+                "type": f.vuln_type,
+                "description": f.description,
+                "cwe": f.cwe,
+                "status": f.status,
+            }
+            for f in findings
+        ]
+
+
+@app.get("/api/findings/{finding_id}/patch")
+async def get_patch(finding_id: int, token: str = Query(..., description="GitHub OAuth token")):
+    """Fetch the patch associated with a specific finding."""
+    with Session(engine) as session:
+        user = session.exec(select(User).where(User.access_token == token)).first()
+        if not user:
+            raise HTTPException(status_code=401, detail="Invalid token")
+        
+        # Ensure finding belongs to user
+        finding = session.get(Finding, finding_id)
+        if not finding or finding.user_id != user.id:
+            raise HTTPException(status_code=404, detail="Finding not found")
+        
+        patch = session.exec(select(Patch).where(Patch.finding_id == finding_id)).first()
+        if not patch:
+            raise HTTPException(status_code=404, detail="Patch not found")
+        
+        return patch
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Auth Routes (Phase 1)
+# ─────────────────────────────────────────────────────────────────────────────
+
+GITHUB_CLIENT_ID = os.getenv("GITHUB_CLIENT_ID")
+GITHUB_CLIENT_SECRET = os.getenv("GITHUB_CLIENT_SECRET")
+
+@app.get("/api/auth/github")
+async def github_login():
+    """Redirect user to GitHub OAuth authorize page."""
+    if not GITHUB_CLIENT_ID:
+        raise HTTPException(status_code=500, detail="GITHUB_CLIENT_ID not configured")
+    
+    scope = "repo read:user user:email"
+    url = f"https://github.com/login/oauth/authorize?client_id={GITHUB_CLIENT_ID}&scope={scope}"
+    return RedirectResponse(url)
+
+
+@app.get("/api/auth/callback")
+async def github_callback(code: str):
+    """Handle the OAuth callback from GitHub."""
+    if not GITHUB_CLIENT_ID or not GITHUB_CLIENT_SECRET:
+        raise HTTPException(status_code=500, detail="GitHub OAuth credentials not configured")
+
+    async with httpx.AsyncClient() as client:
+        # 1. Exchange code for access token
+        token_response = await client.post(
+            "https://github.com/login/oauth/access_token",
+            params={
+                "client_id": GITHUB_CLIENT_ID,
+                "client_secret": GITHUB_CLIENT_SECRET,
+                "code": code,
             },
+            headers={"Accept": "application/json"},
+        )
+        token_data = token_response.json()
+        
+        if "error" in token_data:
+            raise HTTPException(status_code=400, detail=token_data.get("error_description"))
+        
+        access_token = token_data.get("access_token")
+        
+        # 2. Get user profile
+        user_response = await client.get(
+            "https://api.github.com/user",
+            headers={
+                "Authorization": f"Bearer {access_token}",
+                "Accept": "application/json",
+            },
+        )
+        user_data = user_response.json()
+        
+        # 3. Save or update user in database
+        with Session(engine) as session:
+            statement = select(User).where(User.github_id == str(user_data["id"]))
+            user = session.exec(statement).first()
+            
+            if not user:
+                user = User(
+                    github_id=str(user_data["id"]),
+                    username=user_data["login"],
+                    email=user_data.get("email"),
+                    access_token=access_token,
+                    avatar_url=user_data.get("avatar_url"),
+                )
+                session.add(user)
+            else:
+                user.access_token = access_token
+                user.username = user_data["login"]
+                user.avatar_url = user_data.get("avatar_url")
+                session.add(user)
+            
+            session.commit()
+
+        # For Phase 1/2, we'll redirect back to the frontend with the token (temporary).
+        # In Phase 3, the frontend will use this to verify the session.
+        frontend_url = "http://localhost:3000/dashboard"
+        return RedirectResponse(f"{frontend_url}?token={access_token}&username={user_data.get('login')}")
+
+
+@app.get("/api/user/repos")
+async def get_user_repos(token: str = Query(..., description="GitHub OAuth token")):
+    """Fetch list of repositories for the authenticated user."""
+    async with httpx.AsyncClient() as client:
+        response = await client.get(
+            "https://api.github.com/user/repos",
+            params={"sort": "updated", "per_page": 20},
+            headers={
+                "Authorization": f"Bearer {token}",
+                "Accept": "application/json",
+            },
+        )
+        if response.status_code != 200:
+            raise HTTPException(status_code=response.status_code, detail="Failed to fetch repositories")
+        
+        repos = response.json()
+        return [
             {
-                "id": "f-002",
-                "severity": "high",
-                "vuln_type": "SQL Injection",
-                "file": "src/api/users.php",
-                "line": 112,
-                "cwe": "CWE-89",
-                "status": "open",
-                "owasp_category": "A03:2021",
+                "id": r["id"],
+                "full_name": r["full_name"],
+                "description": r["description"],
+                "private": r["private"],
+                "url": r["html_url"],
+            }
+            for r in repos
+        ]
+
+
+@app.get("/api/me")
+async def get_me(token: str = Query(..., description="GitHub OAuth token")):
+    """Get profile of the authenticated user."""
+    async with httpx.AsyncClient() as client:
+        response = await client.get(
+            "https://api.github.com/user",
+            headers={
+                "Authorization": f"Bearer {token}",
+                "Accept": "application/json",
             },
-            {
-                "id": "f-003",
-                "severity": "high",
-                "vuln_type": "Reflected XSS",
-                "file": "src/templates/profile.html",
-                "line": 23,
-                "cwe": "CWE-79",
-                "status": "open",
-                "owasp_category": "A03:2021",
+        )
+        if response.status_code != 200:
+            raise HTTPException(status_code=response.status_code, detail="Failed to fetch user profile")
+        
+        return response.json()
+
+
+@app.get("/api/repos/{owner}/{repo}/contents")
+async def get_repo_contents(
+    owner: str,
+    repo: str,
+    path: str = Query("", description="Path within the repository"),
+    token: str = Query(..., description="GitHub OAuth token"),
+):
+    """Fetch files and directories within a repository path."""
+    async with httpx.AsyncClient() as client:
+        url = f"https://api.github.com/repos/{owner}/{repo}/contents/{path}"
+        response = await client.get(
+            url,
+            headers={
+                "Authorization": f"Bearer {token}",
+                "Accept": "application/json",
             },
-            {
-                "id": "f-004",
-                "severity": "high",
-                "vuln_type": "Unrestricted File Upload",
-                "file": "src/upload/handler.php",
-                "line": 34,
-                "cwe": "CWE-434",
-                "status": "open",
-                "owasp_category": "A04:2021",
-            },
-            {
-                "id": "f-005",
-                "severity": "medium",
-                "vuln_type": "Hardcoded Credential",
-                "file": "config/database.php",
-                "line": 8,
-                "cwe": "CWE-798",
-                "status": "patched",
-                "owasp_category": "A07:2021",
-            },
-            {
-                "id": "f-006",
-                "severity": "medium",
-                "vuln_type": "Session Fixation",
-                "file": "src/session/manager.php",
-                "line": 19,
-                "cwe": "CWE-384",
-                "status": "patched",
-                "owasp_category": "A07:2021",
-            },
-        ],
-        "stats": {
-            "total": 6,
-            "critical": 1,
-            "high": 3,
-            "medium": 2,
-            "patched": 2,
-        },
-    }
+        )
+        if response.status_code != 200:
+            raise HTTPException(status_code=response.status_code, detail="Failed to fetch contents")
+        
+        items = response.json()
+        if not isinstance(items, list):
+            # If path is a file, GitHub returns a single object. 
+            # We wrap it in a list to keep the UI simple.
+            items = [items]
+
+        return response.json()

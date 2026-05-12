@@ -49,6 +49,7 @@ class ScanState(TypedDict):
     # Input
     file_path: str
     file_content: str
+    access_token: Optional[str]
 
     # Findings — accumulated across nodes
     findings: Annotated[list[Finding], add]
