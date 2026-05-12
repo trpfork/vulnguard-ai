@@ -1,0 +1,335 @@
+@import "tailwindcss";
+
+/* ============================================
+   VulnGuard AI — Design Tokens (Dark Mode Default)
+   ============================================ */
+
+:root,
+html[data-theme="dark"] {
+  --bg-base: #07080d;
+  --bg-surface: #0d0f1a;
+  --bg-elevated: #12152b;
+  --bg-card: #181b2e;
+  --bg-hover: #1e2240;
+  --glass-bg: rgba(18, 21, 43, 0.7);
+
+  /* Accent — electric violet */
+  --accent-primary: #7c3aed;
+  --accent-bright: #a855f7;
+  --accent-glow: rgba(124, 58, 237, 0.35);
+  --accent-subtle: rgba(124, 58, 237, 0.12);
+
+  /* Semantic colors */
+  --color-critical: #ef4444;
+  --color-high: #f97316;
+  --color-medium: #eab308;
+  --color-low: #22c55e;
+  --color-info: #3b82f6;
+  --color-success: #10b981;
+
+  /* Text */
+  --text-primary: #f1f5f9;
+  --text-secondary: #94a3b8;
+  --text-muted: #475569;
+  --text-accent: #c4b5fd;
+
+  /* Borders */
+  --border-subtle: rgba(148, 163, 184, 0.08);
+  --border-default: rgba(148, 163, 184, 0.14);
+  --border-accent: rgba(124, 58, 237, 0.4);
+
+  /* Agent status */
+  --agent-scanning: #3b82f6;
+  --agent-verifying: #f59e0b;
+  --agent-patching: #10b981;
+  --agent-error: #ef4444;
+
+  /* Shadows */
+  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 4px 20px rgba(0, 0, 0, 0.5);
+  --shadow-glow: 0 0 30px rgba(124, 58, 237, 0.25);
+  --shadow-glow-sm: 0 0 12px rgba(124, 58, 237, 0.2);
+
+  /* color-scheme hint for browser chrome (scrollbars, inputs, etc.) */
+  color-scheme: dark;
+}
+
+/* ============================================
+   Light Mode Overrides
+   ============================================ */
+
+html[data-theme="light"] {
+  --bg-base: #f4f5fb;
+  --bg-surface: #ffffff;
+  --bg-elevated: #eef0f9;
+  --bg-card: #f9faff;
+  --bg-hover: #e8eaf6;
+  --glass-bg: rgba(255, 255, 255, 0.75);
+
+  /* Accent — slightly deeper violet so it pops on white */
+  --accent-primary: #6d28d9;
+  --accent-bright: #7c3aed;
+  --accent-glow: rgba(109, 40, 217, 0.2);
+  --accent-subtle: rgba(109, 40, 217, 0.08);
+
+  /* Semantic — same vivid colours work on both themes */
+  --color-critical: #dc2626;
+  --color-high: #ea580c;
+  --color-medium: #ca8a04;
+  --color-low: #16a34a;
+  --color-info: #2563eb;
+  --color-success: #059669;
+
+  /* Text */
+  --text-primary: #0f172a;
+  --text-secondary: #475569;
+  --text-muted: #94a3b8;
+  --text-accent: #5b21b6;
+
+  /* Borders */
+  --border-subtle: rgba(15, 23, 42, 0.08);
+  --border-default: rgba(15, 23, 42, 0.12);
+  --border-accent: rgba(109, 40, 217, 0.35);
+
+  /* Agent status — same */
+  --agent-scanning: #2563eb;
+  --agent-verifying: #d97706;
+  --agent-patching: #059669;
+  --agent-error: #dc2626;
+
+  /* Shadows — lighter on white background */
+  --shadow-sm: 0 2px 8px rgba(15, 23, 42, 0.08);
+  --shadow-md: 0 4px 20px rgba(15, 23, 42, 0.12);
+  --shadow-glow: 0 0 30px rgba(109, 40, 217, 0.15);
+  --shadow-glow-sm: 0 0 12px rgba(109, 40, 217, 0.12);
+
+  color-scheme: light;
+}
+
+/* ============================================
+   Tailwind + Font Tokens
+   ============================================ */
+
+@theme inline {
+  --color-background: var(--bg-base);
+  --color-foreground: var(--text-primary);
+  --font-sans: var(--font-inter), "Inter", system-ui, sans-serif;
+  --font-mono: var(--font-jetbrains-mono), "JetBrains Mono", monospace;
+}
+
+/* ============================================
+   Global Reset & Base
+   ============================================ */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+/* Smooth transition when the theme attribute changes */
+html.theme-transitioning,
+html.theme-transitioning * {
+  transition:
+    background-color 220ms ease,
+    border-color 220ms ease,
+    color 220ms ease,
+    box-shadow 220ms ease !important;
+}
+
+body {
+  background: var(--bg-base);
+  color: var(--text-primary);
+  font-family: var(--font-inter), "Inter", system-ui, sans-serif;
+  font-size: 14px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  overflow: hidden;
+}
+
+/* ============================================
+   Scrollbars
+   ============================================ */
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--bg-surface);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border-default);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--accent-primary);
+}
+
+/* ============================================
+   Utility Classes
+   ============================================ */
+
+/* Glass morphism card — background is now a CSS variable */
+.glass-card {
+  background: var(--glass-bg);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--border-subtle);
+  border-radius: 12px;
+}
+
+/* Glowing accent border */
+.glow-border {
+  border: 1px solid var(--border-accent);
+  box-shadow: var(--shadow-glow-sm), inset 0 0 20px rgba(124, 58, 237, 0.04);
+}
+
+/* Severity badges */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 20px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.badge-critical {
+  background: rgba(239, 68, 68, 0.15);
+  color: var(--color-critical);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+}
+
+.badge-high {
+  background: rgba(249, 115, 22, 0.15);
+  color: var(--color-high);
+  border: 1px solid rgba(249, 115, 22, 0.3);
+}
+
+.badge-medium {
+  background: rgba(234, 179, 8, 0.15);
+  color: var(--color-medium);
+  border: 1px solid rgba(234, 179, 8, 0.3);
+}
+
+.badge-low {
+  background: rgba(34, 197, 94, 0.15);
+  color: var(--color-low);
+  border: 1px solid rgba(34, 197, 94, 0.3);
+}
+
+/* ============================================
+   Animations
+   ============================================ */
+
+@keyframes pulse-ring {
+  0%   { transform: scale(1);   opacity: 1; }
+  100% { transform: scale(2.5); opacity: 0; }
+}
+
+@keyframes fade-slide-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0);   }
+}
+
+@keyframes glow-pulse {
+  0%, 100% { box-shadow: var(--shadow-glow-sm); }
+  50%       { box-shadow: var(--shadow-glow);    }
+}
+
+@keyframes typing-dot {
+  0%, 80%, 100% { opacity: 0.2; transform: scale(0.8); }
+  40%           { opacity: 1;   transform: scale(1);   }
+}
+
+@keyframes theme-toggle-spin {
+  from { transform: rotate(0deg);   }
+  to   { transform: rotate(360deg); }
+}
+
+.animate-fade-in {
+  animation: fade-slide-in var(--transition-base, 250ms ease) both;
+}
+
+.animate-glow {
+  animation: glow-pulse 2s ease-in-out infinite;
+}
+
+/* ============================================
+   Live Indicator Dot
+   ============================================ */
+
+.live-dot {
+  position: relative;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--color-success);
+}
+
+.live-dot::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: var(--color-success);
+  animation: pulse-ring 1.5s ease-out infinite;
+}
+
+/* ============================================
+   Typography helpers
+   ============================================ */
+
+.font-mono {
+  font-family: var(--font-jetbrains-mono), "JetBrains Mono", monospace;
+}
+
+.gradient-text {
+  background: linear-gradient(135deg, var(--accent-bright), #60a5fa);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* ============================================
+   Theme Toggle Button
+   ============================================ */
+
+.theme-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  border: 1px solid var(--border-default);
+  background: var(--bg-card);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition:
+    background var(--transition-fast, 150ms ease),
+    border-color var(--transition-fast, 150ms ease),
+    color var(--transition-fast, 150ms ease);
+  font-size: 16px;
+  line-height: 1;
+}
+
+.theme-toggle:hover {
+  background: var(--bg-hover);
+  border-color: var(--border-accent);
+  color: var(--accent-bright);
+}
