@@ -152,21 +152,66 @@ def _read_file_content(file_path: str, access_token: Optional[str] = None) -> st
     """
     Fetch file content. Supports:
     - Local file paths (for testing)
-    - GitHub API URLs (owner/repo/path format)
+    - GitHub repository paths (owner/repo/path format)
     """
-    # Local file
+    # 1. Local file
     local = Path(file_path)
     if local.exists():
         return local.read_text(encoding="utf-8")
 
-    # GitHub raw URL fallback (uses OAuth token if provided, else fallback to ENV)
+    # 2. GitHub API (preferred as it handles default branch automatically)
     token = access_token or os.getenv("GITHUB_TOKEN", "")
     if token and "/" in file_path:
         import urllib.request
+        import base64
+        
+        # Basic heuristic: if it has at least 2 slashes, it's likely owner/repo/path
+        # e.g. trpfork/devsecops/sqli/src/index.php
+        parts = file_path.split("/", 2)
+        if len(parts) == 3:
+            owner, repo, path = parts[0], parts[1], parts[2]
+            api_url = f"https://api.github.com/repos/{owner}/{repo}/contents/{path}"
+            
+            try:
+                req = urllib.request.Request(api_url, headers={
+                    "Authorization": f"token {token}",
+                    "Accept": "application/json",
+                    "User-Agent": "VulnGuardAI-Agent"
+                })
+                with urllib.request.urlopen(req) as r:
+                    data = json.loads(r.read().decode("utf-8"))
+                    if isinstance(data, dict):
+                        if data.get("encoding") == "base64" and data.get("content"):
+                            # The API returns content as base64 but often with newlines
+                            encoded_content = data["content"].replace("\n", "").replace("\r", "")
+                            return base64.b64decode(encoded_content).decode("utf-8")
+                        elif "download_url" in data:
+                            # Fallback to raw download URL if content not in response
+                            raw_req = urllib.request.Request(data["download_url"], headers={
+                                "Authorization": f"token {token}",
+                                "User-Agent": "VulnGuardAI-Agent"
+                            })
+                            with urllib.request.urlopen(raw_req) as raw_r:
+                                return raw_r.read().decode("utf-8")
+            except Exception as e:
+                # Log to stderr and try fallback
+                print(f"[Agent] GitHub API fetch failed: {e}", file=sys.stderr)
+
+    # 3. GitHub raw URL fallback (previous simple logic)
+    if token and "/" in file_path:
+        import urllib.request
+        # This often fails with 404 because it lacks branch (e.g. /main/)
+        # But we keep it as a last-resort attempt
         url = f"https://raw.githubusercontent.com/{file_path}"
-        req = urllib.request.Request(url, headers={"Authorization": f"token {token}"})
-        with urllib.request.urlopen(req) as r:
-            return r.read().decode("utf-8")
+        try:
+            req = urllib.request.Request(url, headers={
+                "Authorization": f"token {token}",
+                "User-Agent": "VulnGuardAI-Agent"
+            })
+            with urllib.request.urlopen(req) as r:
+                return r.read().decode("utf-8")
+        except:
+            pass
 
     raise FileNotFoundError(f"Cannot read file: {file_path}")
 
@@ -208,12 +253,16 @@ def scan_node(state: ScanState) -> dict:
 
     try:
         findings_raw = _extract_json(raw)
-        findings: list[Finding] = [Finding(**f) for f in findings_raw]
+        findings: list[Finding] = []
+        for f in findings_raw:
+            # Ensure file_path is present for the UI
+            f["file_path"] = f.get("file_path", state["file_path"])
+            findings.append(Finding(**f))
     except Exception as e:
         return {
             "file_content": content,
             "findings": [],
-            "logs": logs + [_log("scan", "error", f"Failed to parse LLM findings: {e}", raw[:200])],
+            "logs": logs + [_log("scan", "error", f"Failed to parse LLM findings: {e}", raw[:500])],
             "current_node": "scan",
             "error": f"Parse error: {e}",
         }
@@ -338,9 +387,13 @@ def patch_node(state: ScanState) -> dict:
 
     try:
         patches_raw = _extract_json(raw)
+        # Handle cases where LLM returns a single object instead of a list
+        if isinstance(patches_raw, dict):
+            patches_raw = [patches_raw]
+        
         patches: list[PatchSuggestion] = [PatchSuggestion(**p) for p in patches_raw]
     except Exception as e:
-        logs.append(_log("patch", "error", f"Failed to parse patch suggestions: {e}", raw[:200]))
+        logs.append(_log("patch", "error", f"Failed to parse patch suggestions: {e}", raw[:500]))
         return {
             "patches": [],
             "logs": logs,

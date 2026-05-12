@@ -9,6 +9,7 @@ from operator import add
 
 class Finding(TypedDict):
     """A single vulnerability finding from the scanner node."""
+    file_path: str           # Path to the file containing the vulnerability
     severity: str            # "critical" | "high" | "medium" | "low"
     vuln_type: str           # e.g., "Broken Access Control"
     cwe: str                 # e.g., "CWE-639"

@@ -33,7 +33,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from backend.agents.scanner import scanner_graph, build_scanner_graph
 from backend.agents.state import ScanState
-from backend.models import User, create_db_and_tables, engine
+from backend.models import User, Finding, Patch, create_db_and_tables, engine
 from sqlmodel import Session, select
 
 
@@ -104,10 +104,6 @@ def _node_to_step_type(node: str) -> str:
 async def _stream_scan(file_path: str, access_token: str | None = None) -> AsyncGenerator[str, None]:
     """
     Run the LangGraph scanner graph and yield SSE events for each log entry.
-
-    LangGraph streaming pattern (from LangGraph skill):
-      Use graph.stream() to iterate over state snapshots per node.
-      Each snapshot contains the updated fields returned by that node.
     """
     initial_state: ScanState = {
         "file_path": file_path,
@@ -127,85 +123,93 @@ async def _stream_scan(file_path: str, access_token: str | None = None) -> Async
         "message": f"Starting scan of {file_path}",
     })
 
-    seen_log_count = 0
-    final_state = None
-
-    try:
-        # graph.stream() yields one dict per node update
-        # Each dict has keys = node_name, value = the partial state returned by that node
-        for chunk in scanner_graph.stream(initial_state):
-            # chunk looks like: {"scan": {"findings": [...], "logs": [...], ...}}
-            for node_name, node_output in chunk.items():
-                # Stream each new log entry that appeared in this node
-                new_logs = node_output.get("logs", [])
-                for log in new_logs[seen_log_count:]:
-                    step_type = _node_to_step_type(log.get("node", node_name))
-                    yield _sse_event("log", {
-                        "type": step_type,
-                        "message": log.get("message", ""),
-                        "detail": log.get("detail"),
-                        "node": log.get("node", node_name),
-                        "level": log.get("level", "info"),
     final_findings = []
     final_patches = []
+    seen_logs = set()
 
     try:
+        # Using astream for async streaming
         async for event in scanner_graph.astream(initial_state, config={"configurable": {"thread_id": "1"}}):
+            # event is a dict: {node_name: {updated_state_keys}}
             for node_name, output in event.items():
+                # 1. Handle logs
                 if "logs" in output:
                     for log in output["logs"]:
-                        yield f"event: log\ndata: {json.dumps(log)}\n\n"
-                        await asyncio.sleep(0.15)
+                        # Use a simple deduplication if logs are repeated in state
+                        log_key = f"{log.get('node')}:{log.get('message')}"
+                        if log_key not in seen_logs:
+                            seen_logs.add(log_key)
+                            step_type = _node_to_step_type(log.get("node", node_name))
+                            yield _sse_event("log", {
+                                "type": step_type,
+                                "message": log.get("message", ""),
+                                "detail": log.get("detail"),
+                                "node": log.get("node", node_name),
+                                "level": log.get("level", "info"),
+                            })
+                            await asyncio.sleep(0.05)
                 
+                # 2. Handle findings
                 if "findings" in output:
+                    # In LangGraph, usually the whole list is returned or appended.
+                    # We only want to stream NEW findings if possible, but for simplicity
+                    # we can stream them as they appear in the 'scan' node output.
                     for finding in output["findings"]:
-                        final_findings.append(finding)
-                        yield f"event: finding\ndata: {json.dumps(finding)}\n\n"
-                        await asyncio.sleep(0.1)
+                        if finding not in final_findings:
+                            final_findings.append(finding)
+                            yield _sse_event("finding", finding)
+                            await asyncio.sleep(0.1)
                 
+                # 3. Handle patches
                 if "patches" in output:
                     for patch in output["patches"]:
-                        final_patches.append(patch)
-                        yield f"event: patch\ndata: {json.dumps(patch)}\n\n"
-                        await asyncio.sleep(0.1)
+                        if patch not in final_patches:
+                            final_patches.append(patch)
+                            yield _sse_event("patch", patch)
+                            await asyncio.sleep(0.1)
 
-        # Save to DB if we have a user
+        # 4. Save to DB if we have a user
         if access_token:
             with Session(engine) as session:
                 user = session.exec(select(User).where(User.access_token == access_token)).first()
                 if user:
-                    for f in final_findings:
+                    for idx, f in enumerate(final_findings):
                         db_finding = Finding(
                             user_id=user.id,
                             file_path=file_path,
-                            line=f.get("line"),
-                            severity=f.get("severity"),
-                            vuln_type=f.get("vuln_type"),
-                            cwe=f.get("cwe"),
-                            description=f.get("description"),
-                            code_snippet=f.get("code_snippet"),
-                            confidence=f.get("confidence"),
-                            owasp_category=f.get("owasp_category"),
+                            line=f.get("line", 0),
+                            severity=f.get("severity", "medium"),
+                            vuln_type=f.get("vuln_type", "unknown"),
+                            cwe=f.get("cwe", ""),
+                            description=f.get("description", ""),
+                            code_snippet=f.get("code_snippet", ""),
+                            confidence=f.get("confidence", 0.0),
+                            owasp_category=f.get("owasp_category", ""),
                             status="open"
                         )
                         session.add(db_finding)
                         session.commit()
                         session.refresh(db_finding)
 
-                        # Find matching patches for this finding
+                        # Match patches by finding_id (which is the index as a string)
                         for p in final_patches:
-                            db_patch = Patch(
-                                finding_id=db_finding.id,
-                                description=p.get("description"),
-                                original_code=p.get("original_code"),
-                                patched_code=p.get("patched_code"),
-                                explanation=p.get("explanation")
-                            )
-                            session.add(db_patch)
+                            if p.get("finding_id") == str(idx):
+                                db_patch = Patch(
+                                    finding_id=db_finding.id,
+                                    description=p.get("description", ""),
+                                    original_code=p.get("original_code", ""),
+                                    patched_code=p.get("patched_code", ""),
+                                    explanation=p.get("explanation", "")
+                                )
+                                session.add(db_patch)
                     
                     session.commit()
 
-        yield f"event: done\ndata: {json.dumps({'success': True, 'findings_count': len(final_findings), 'patches_count': len(final_patches)})}\n\n"
+        yield _sse_event("done", {
+            "success": True, 
+            "findings_count": len(final_findings), 
+            "patches_count": len(final_patches)
+        })
 
     except Exception as e:
         yield _sse_event("error", {
@@ -236,16 +240,11 @@ async def stream_scan(
     token: str | None = Query(None, description="GitHub OAuth token"),
 ):
     """
-    Stream the agent's scanning process via Server-Sent Events.
-
-    Events emitted:
-      started  — scan has begun
-      log      — a single agent log entry (maps to AgentFeed step)
-      finding  — a vulnerability was detected
-      patch    — a patch suggestion was generated
-      error    — an error occurred
-      done     — scan complete with summary stats
+    SSE endpoint that streams the Scan-Verify-Patch agent workflow.
     """
+    if ".." in file_path or file_path.startswith("/") or ":" in file_path:
+        raise HTTPException(status_code=400, detail="Invalid path or path traversal detected")
+
     return StreamingResponse(
         _stream_scan(file_path, token),
         media_type="text/event-stream",
@@ -419,7 +418,8 @@ async def github_callback(code: str):
         # For Phase 1/2, we'll redirect back to the frontend with the token (temporary).
         # In Phase 3, the frontend will use this to verify the session.
         frontend_url = "http://localhost:3000/dashboard"
-        return RedirectResponse(f"{frontend_url}?token={access_token}&username={user_data.get('login')}")
+        # Use URL fragment (#) instead of query parameter (?) to protect the token
+    return RedirectResponse(f"{frontend_url}#token={access_token}&username={user_data.get('login')}")
 
 
 @app.get("/api/user/repos")
