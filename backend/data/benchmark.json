@@ -1,0 +1,166 @@
+{
+  "version": "1.0",
+  "description": "VulnGuard AI — Ground-truth benchmark dataset (20 samples)",
+  "samples": [
+    {
+      "id": "s01",
+      "language": "php",
+      "label": "vulnerable",
+      "expected_vulns": [
+        { "vuln_type": "SQL Injection",       "cwe": "CWE-89",  "severity": "high"     }
+      ],
+      "code": "<?php\n$id = $_GET['id'];\n$q  = \"SELECT * FROM users WHERE id = \" . $id;\n$r  = mysql_query($q);\n?>"
+    },
+    {
+      "id": "s02",
+      "language": "php",
+      "label": "clean",
+      "expected_vulns": [],
+      "code": "<?php\n$id  = (int) $_GET['id'];\n$stmt = $pdo->prepare('SELECT * FROM users WHERE id = ?');\n$stmt->execute([$id]);\n$row = $stmt->fetch();\n?>"
+    },
+    {
+      "id": "s03",
+      "language": "php",
+      "label": "vulnerable",
+      "expected_vulns": [
+        { "vuln_type": "Reflected XSS",       "cwe": "CWE-79",  "severity": "high"     }
+      ],
+      "code": "<?php\necho '<h1>Hello, ' . $_GET['name'] . '!</h1>';\n?>"
+    },
+    {
+      "id": "s04",
+      "language": "php",
+      "label": "clean",
+      "expected_vulns": [],
+      "code": "<?php\n$name = htmlspecialchars($_GET['name'], ENT_QUOTES, 'UTF-8');\necho '<h1>Hello, ' . $name . '!</h1>';\n?>"
+    },
+    {
+      "id": "s05",
+      "language": "php",
+      "label": "vulnerable",
+      "expected_vulns": [
+        { "vuln_type": "Hardcoded Credential", "cwe": "CWE-798", "severity": "medium"  }
+      ],
+      "code": "<?php\n$DB_PASSWORD = 'admin123!';\n$pdo = new PDO('mysql:host=localhost;dbname=app', 'root', $DB_PASSWORD);\n?>"
+    },
+    {
+      "id": "s06",
+      "language": "php",
+      "label": "clean",
+      "expected_vulns": [],
+      "code": "<?php\n$DB_PASSWORD = getenv('DB_PASSWORD');\n$pdo = new PDO('mysql:host=localhost;dbname=app', 'root', $DB_PASSWORD);\n?>"
+    },
+    {
+      "id": "s07",
+      "language": "python",
+      "label": "vulnerable",
+      "expected_vulns": [
+        { "vuln_type": "SQL Injection",       "cwe": "CWE-89",  "severity": "high"     }
+      ],
+      "code": "import sqlite3\ndef get_user(username):\n    conn = sqlite3.connect('app.db')\n    query = f\"SELECT * FROM users WHERE username = '{username}'\"\n    return conn.execute(query).fetchone()"
+    },
+    {
+      "id": "s08",
+      "language": "python",
+      "label": "clean",
+      "expected_vulns": [],
+      "code": "import sqlite3\ndef get_user(username):\n    conn = sqlite3.connect('app.db')\n    return conn.execute('SELECT * FROM users WHERE username = ?', (username,)).fetchone()"
+    },
+    {
+      "id": "s09",
+      "language": "python",
+      "label": "vulnerable",
+      "expected_vulns": [
+        { "vuln_type": "Command Injection",   "cwe": "CWE-78",  "severity": "critical" }
+      ],
+      "code": "import os\ndef ping_host(host):\n    return os.system('ping -c 1 ' + host)"
+    },
+    {
+      "id": "s10",
+      "language": "python",
+      "label": "clean",
+      "expected_vulns": [],
+      "code": "import subprocess\ndef ping_host(host):\n    return subprocess.run(['ping', '-c', '1', host], capture_output=True, timeout=5)"
+    },
+    {
+      "id": "s11",
+      "language": "javascript",
+      "label": "vulnerable",
+      "expected_vulns": [
+        { "vuln_type": "Prototype Pollution", "cwe": "CWE-1321", "severity": "high"   }
+      ],
+      "code": "function merge(target, source) {\n  for (let key in source) {\n    target[key] = source[key];\n  }\n  return target;\n}"
+    },
+    {
+      "id": "s12",
+      "language": "javascript",
+      "label": "clean",
+      "expected_vulns": [],
+      "code": "function merge(target, source) {\n  const FORBIDDEN = ['__proto__', 'constructor', 'prototype'];\n  for (let key in source) {\n    if (!FORBIDDEN.includes(key)) {\n      target[key] = source[key];\n    }\n  }\n  return target;\n}"
+    },
+    {
+      "id": "s13",
+      "language": "php",
+      "label": "vulnerable",
+      "expected_vulns": [
+        { "vuln_type": "Broken Access Control", "cwe": "CWE-639", "severity": "critical" }
+      ],
+      "code": "<?php\nfunction getOrder($order_id) {\n    global $db;\n    // No ownership check!\n    return $db->query('SELECT * FROM orders WHERE id = ' . $order_id)->fetch();\n}\n?>"
+    },
+    {
+      "id": "s14",
+      "language": "php",
+      "label": "clean",
+      "expected_vulns": [],
+      "code": "<?php\nfunction getOrder($order_id, $user_id) {\n    global $db;\n    $stmt = $db->prepare('SELECT * FROM orders WHERE id = ? AND user_id = ?');\n    $stmt->execute([$order_id, $user_id]);\n    return $stmt->fetch();\n}\n?>"
+    },
+    {
+      "id": "s15",
+      "language": "python",
+      "label": "vulnerable",
+      "expected_vulns": [
+        { "vuln_type": "Path Traversal",       "cwe": "CWE-22",  "severity": "high"    }
+      ],
+      "code": "import os\ndef read_file(filename):\n    base_dir = '/var/app/uploads/'\n    path = base_dir + filename\n    with open(path) as f:\n        return f.read()"
+    },
+    {
+      "id": "s16",
+      "language": "python",
+      "label": "clean",
+      "expected_vulns": [],
+      "code": "import os\ndef read_file(filename):\n    base_dir = '/var/app/uploads/'\n    path = os.path.realpath(os.path.join(base_dir, filename))\n    if not path.startswith(base_dir):\n        raise PermissionError('Path traversal detected')\n    with open(path) as f:\n        return f.read()"
+    },
+    {
+      "id": "s17",
+      "language": "javascript",
+      "label": "vulnerable",
+      "expected_vulns": [
+        { "vuln_type": "Insecure Deserialization", "cwe": "CWE-502", "severity": "critical" }
+      ],
+      "code": "const session = require('express-session');\napp.post('/restore', (req, res) => {\n  const data = eval('(' + req.body.session + ')');\n  req.session.user = data.user;\n  res.json({ ok: true });\n});"
+    },
+    {
+      "id": "s18",
+      "language": "javascript",
+      "label": "clean",
+      "expected_vulns": [],
+      "code": "app.post('/restore', (req, res) => {\n  try {\n    const data = JSON.parse(req.body.session);\n    if (typeof data.user === 'string') {\n      req.session.user = data.user;\n    }\n    res.json({ ok: true });\n  } catch { res.status(400).end(); }\n});"
+    },
+    {
+      "id": "s19",
+      "language": "php",
+      "label": "vulnerable",
+      "expected_vulns": [
+        { "vuln_type": "Unrestricted File Upload", "cwe": "CWE-434", "severity": "high" }
+      ],
+      "code": "<?php\n$file = $_FILES['upload'];\nmove_uploaded_file($file['tmp_name'], '/var/www/uploads/' . $file['name']);\necho 'Uploaded!';\n?>"
+    },
+    {
+      "id": "s20",
+      "language": "php",
+      "label": "clean",
+      "expected_vulns": [],
+      "code": "<?php\n$file = $_FILES['upload'];\n$allowed = ['image/jpeg', 'image/png', 'image/gif'];\nif (!in_array($file['type'], $allowed)) {\n    http_response_code(400);\n    exit('File type not allowed');\n}\n$name = bin2hex(random_bytes(8)) . '.jpg';\nmove_uploaded_file($file['tmp_name'], '/var/www/uploads/' . $name);\n?>"
+    }
+  ]
+}

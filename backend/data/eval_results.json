@@ -1,0 +1,318 @@
+{
+  "timestamp": "2026-05-12T12:46:58",
+  "benchmark_path": "backend/data/benchmark.json",
+  "total_samples": 20,
+  "correct": 10,
+  "model_info": "Mock (no API key \u2014 offline mode)",
+  "elapsed_total_s": 0.5,
+  "metrics": {
+    "accuracy": 0.5,
+    "precision": 0.0,
+    "recall": 0.0,
+    "f1": 0.0,
+    "tp": 0,
+    "tn": 10,
+    "fp": 0,
+    "fn": 10
+  },
+  "per_type": {
+    "SQL Injection": {
+      "expected": 2,
+      "detected": 0
+    },
+    "Reflected XSS": {
+      "expected": 1,
+      "detected": 0
+    },
+    "Hardcoded Credential": {
+      "expected": 1,
+      "detected": 0
+    },
+    "Command Injection": {
+      "expected": 1,
+      "detected": 0
+    },
+    "Prototype Pollution": {
+      "expected": 1,
+      "detected": 0
+    },
+    "Broken Access Control": {
+      "expected": 1,
+      "detected": 0
+    },
+    "Path Traversal": {
+      "expected": 1,
+      "detected": 0
+    },
+    "Insecure Deserialization": {
+      "expected": 1,
+      "detected": 0
+    },
+    "Unrestricted File Upload": {
+      "expected": 1,
+      "detected": 0
+    }
+  },
+  "samples": [
+    {
+      "sample_id": "s01",
+      "language": "php",
+      "ground_truth_label": "vulnerable",
+      "predicted_label": "clean",
+      "expected_vuln_types": [
+        "SQL Injection"
+      ],
+      "detected_vuln_types": [],
+      "confirmed_count": 0,
+      "correct": false,
+      "elapsed_s": 0.03,
+      "error": null
+    },
+    {
+      "sample_id": "s02",
+      "language": "php",
+      "ground_truth_label": "clean",
+      "predicted_label": "clean",
+      "expected_vuln_types": [],
+      "detected_vuln_types": [],
+      "confirmed_count": 0,
+      "correct": true,
+      "elapsed_s": 0.02,
+      "error": null
+    },
+    {
+      "sample_id": "s03",
+      "language": "php",
+      "ground_truth_label": "vulnerable",
+      "predicted_label": "clean",
+      "expected_vuln_types": [
+        "Reflected XSS"
+      ],
+      "detected_vuln_types": [],
+      "confirmed_count": 0,
+      "correct": false,
+      "elapsed_s": 0.02,
+      "error": null
+    },
+    {
+      "sample_id": "s04",
+      "language": "php",
+      "ground_truth_label": "clean",
+      "predicted_label": "clean",
+      "expected_vuln_types": [],
+      "detected_vuln_types": [],
+      "confirmed_count": 0,
+      "correct": true,
+      "elapsed_s": 0.03,
+      "error": null
+    },
+    {
+      "sample_id": "s05",
+      "language": "php",
+      "ground_truth_label": "vulnerable",
+      "predicted_label": "clean",
+      "expected_vuln_types": [
+        "Hardcoded Credential"
+      ],
+      "detected_vuln_types": [],
+      "confirmed_count": 0,
+      "correct": false,
+      "elapsed_s": 0.03,
+      "error": null
+    },
+    {
+      "sample_id": "s06",
+      "language": "php",
+      "ground_truth_label": "clean",
+      "predicted_label": "clean",
+      "expected_vuln_types": [],
+      "detected_vuln_types": [],
+      "confirmed_count": 0,
+      "correct": true,
+      "elapsed_s": 0.03,
+      "error": null
+    },
+    {
+      "sample_id": "s07",
+      "language": "python",
+      "ground_truth_label": "vulnerable",
+      "predicted_label": "clean",
+      "expected_vuln_types": [
+        "SQL Injection"
+      ],
+      "detected_vuln_types": [],
+      "confirmed_count": 0,
+      "correct": false,
+      "elapsed_s": 0.02,
+      "error": null
+    },
+    {
+      "sample_id": "s08",
+      "language": "python",
+      "ground_truth_label": "clean",
+      "predicted_label": "clean",
+      "expected_vuln_types": [],
+      "detected_vuln_types": [],
+      "confirmed_count": 0,
+      "correct": true,
+      "elapsed_s": 0.02,
+      "error": null
+    },
+    {
+      "sample_id": "s09",
+      "language": "python",
+      "ground_truth_label": "vulnerable",
+      "predicted_label": "clean",
+      "expected_vuln_types": [
+        "Command Injection"
+      ],
+      "detected_vuln_types": [],
+      "confirmed_count": 0,
+      "correct": false,
+      "elapsed_s": 0.03,
+      "error": null
+    },
+    {
+      "sample_id": "s10",
+      "language": "python",
+      "ground_truth_label": "clean",
+      "predicted_label": "clean",
+      "expected_vuln_types": [],
+      "detected_vuln_types": [],
+      "confirmed_count": 0,
+      "correct": true,
+      "elapsed_s": 0.01,
+      "error": null
+    },
+    {
+      "sample_id": "s11",
+      "language": "javascript",
+      "ground_truth_label": "vulnerable",
+      "predicted_label": "clean",
+      "expected_vuln_types": [
+        "Prototype Pollution"
+      ],
+      "detected_vuln_types": [],
+      "confirmed_count": 0,
+      "correct": false,
+      "elapsed_s": 0.02,
+      "error": null
+    },
+    {
+      "sample_id": "s12",
+      "language": "javascript",
+      "ground_truth_label": "clean",
+      "predicted_label": "clean",
+      "expected_vuln_types": [],
+      "detected_vuln_types": [],
+      "confirmed_count": 0,
+      "correct": true,
+      "elapsed_s": 0.02,
+      "error": null
+    },
+    {
+      "sample_id": "s13",
+      "language": "php",
+      "ground_truth_label": "vulnerable",
+      "predicted_label": "clean",
+      "expected_vuln_types": [
+        "Broken Access Control"
+      ],
+      "detected_vuln_types": [],
+      "confirmed_count": 0,
+      "correct": false,
+      "elapsed_s": 0.03,
+      "error": null
+    },
+    {
+      "sample_id": "s14",
+      "language": "php",
+      "ground_truth_label": "clean",
+      "predicted_label": "clean",
+      "expected_vuln_types": [],
+      "detected_vuln_types": [],
+      "confirmed_count": 0,
+      "correct": true,
+      "elapsed_s": 0.03,
+      "error": null
+    },
+    {
+      "sample_id": "s15",
+      "language": "python",
+      "ground_truth_label": "vulnerable",
+      "predicted_label": "clean",
+      "expected_vuln_types": [
+        "Path Traversal"
+      ],
+      "detected_vuln_types": [],
+      "confirmed_count": 0,
+      "correct": false,
+      "elapsed_s": 0.01,
+      "error": null
+    },
+    {
+      "sample_id": "s16",
+      "language": "python",
+      "ground_truth_label": "clean",
+      "predicted_label": "clean",
+      "expected_vuln_types": [],
+      "detected_vuln_types": [],
+      "confirmed_count": 0,
+      "correct": true,
+      "elapsed_s": 0.01,
+      "error": null
+    },
+    {
+      "sample_id": "s17",
+      "language": "javascript",
+      "ground_truth_label": "vulnerable",
+      "predicted_label": "clean",
+      "expected_vuln_types": [
+        "Insecure Deserialization"
+      ],
+      "detected_vuln_types": [],
+      "confirmed_count": 0,
+      "correct": false,
+      "elapsed_s": 0.02,
+      "error": null
+    },
+    {
+      "sample_id": "s18",
+      "language": "javascript",
+      "ground_truth_label": "clean",
+      "predicted_label": "clean",
+      "expected_vuln_types": [],
+      "detected_vuln_types": [],
+      "confirmed_count": 0,
+      "correct": true,
+      "elapsed_s": 0.02,
+      "error": null
+    },
+    {
+      "sample_id": "s19",
+      "language": "php",
+      "ground_truth_label": "vulnerable",
+      "predicted_label": "clean",
+      "expected_vuln_types": [
+        "Unrestricted File Upload"
+      ],
+      "detected_vuln_types": [],
+      "confirmed_count": 0,
+      "correct": false,
+      "elapsed_s": 0.02,
+      "error": null
+    },
+    {
+      "sample_id": "s20",
+      "language": "php",
+      "ground_truth_label": "clean",
+      "predicted_label": "clean",
+      "expected_vuln_types": [],
+      "detected_vuln_types": [],
+      "confirmed_count": 0,
+      "correct": true,
+      "elapsed_s": 0.02,
+      "error": null
+    }
+  ]
+}
